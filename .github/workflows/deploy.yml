@@ -24,8 +24,6 @@ jobs:
           ssh -T -i ~/.ssh/id_ed25519 ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             cd Chatple_Server/
             git pull origin main
-            npm install
-            npm run build
-            pm2 restart chatple-server || pm2 start npm --name "chatple-server" -- run start:prod
+            docker compose up -d --build
           EOF
 
