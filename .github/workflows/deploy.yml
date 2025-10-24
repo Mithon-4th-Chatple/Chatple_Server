@@ -22,7 +22,7 @@ jobs:
       - name: Deploy via SSH
         run: |
           ssh -T -i ~/.ssh/id_ed25519 ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
-            cd chatple_server/
+            cd Chatple_Server/
             git pull origin main
             npm install
             npm run build
