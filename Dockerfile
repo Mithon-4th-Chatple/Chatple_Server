@@ -9,5 +9,5 @@ COPY . .
 
 RUN yarn build
 
-EXPOSE 3000
+EXPOSE 2086
 CMD ["node", "dist/main"]
