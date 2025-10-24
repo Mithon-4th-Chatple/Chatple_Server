@@ -10,6 +10,7 @@ import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
 import { ChannelsModule } from './channels/channels.module';
 import { MessagesModule } from './messages/messages.module';
+import { ChatModule } from './chat/chat.module';
 import { ConfigModule } from './config/config.module';
 import { ConfigService } from './config/config.service';
 import { typeOrmConfig } from './database/database.config';
@@ -31,6 +32,7 @@ import { HttpExceptionFilter } from './shared/filters/http-exception.filter';
     AuthModule,
     ChannelsModule,
     MessagesModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [

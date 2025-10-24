@@ -40,6 +40,7 @@ export class MessagesService {
   async getMessages(channelId: string) {
     return this.messageRepository
       .createQueryBuilder('message')
+      .leftJoinAndSelect('message.sender', 'sender')
       .where('message.channelId = :channelId', { channelId })
       .andWhere('message.deletedAt IS NULL')
       .orderBy('message.createdAt', 'DESC')

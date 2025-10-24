@@ -1,17 +1,23 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { AppModule } from './app.module';
 import { ConfigService } from './config/config.service';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
-
+  
+  // CORS 설정
   app.enableCors({
-    origin: configService.corsOrigin,
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
+
+  // Socket.IO 어댑터 설정 (GABOJOK 블로그 방법)
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -32,5 +38,6 @@ async function bootstrap() {
 
   await app.listen(configService.port);
   console.log(`Application is running on: http://localhost:${configService.port}`);
+  console.log(`Socket.IO server is available at: ws://localhost:${configService.port}`);
 }
 bootstrap();

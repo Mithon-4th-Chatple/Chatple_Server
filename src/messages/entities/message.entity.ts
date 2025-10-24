@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Channel } from '../../channels/entities/channel.entity';
 import { MessageMention } from './message-mention.entity';
+import { User } from '../../users/entities/user.entity';
 
 @Entity('messages')
 @Index(['channelId', 'createdAt'])
@@ -56,6 +57,10 @@ export class Message {
   })
   @JoinColumn({ name: 'channelId' })
   channel: Channel;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'senderId' })
+  sender: User;
 
   @OneToMany(() => MessageMention, (mention) => mention.message)
   mentions: MessageMention[];

@@ -18,9 +18,10 @@ import { User } from '../users/entities/user.entity';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { MessageListQueryDto } from './dto/message-list-query.dto';
+import { ChannelAccessGuard } from '../channels/guards/channel-access.guard';
 @ApiTags('messages')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ChannelAccessGuard)
 @Controller('channels/:channelId/messages')
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}

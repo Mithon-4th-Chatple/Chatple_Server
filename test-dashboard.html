@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chatple 실시간 채팅 테스트 대시보드</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f5f5; }
+    .container { display: flex; height: 100vh; }
+    .panel { flex: 1; background: white; margin: 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+    .teacher .header { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .student .header { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+    .status { padding: 10px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; font-size: 14px; }
+    .status.connected { background: #d4edda; color: #155724; }
+    .status.disconnected { background: #f8d7da; color: #721c24; }
+    .controls { padding: 15px; border-bottom: 1px solid #eee; }
+    .controls button { padding: 10px 20px; margin: 5px; border: none; background: #007bff; color: white; border-radius: 5px; cursor: pointer; font-size: 14px; }
+    .controls button:hover { background: #0056b3; }
+    .controls button:disabled { background: #ccc; cursor: not-allowed; }
+    .channels { padding: 15px; border-bottom: 1px solid #eee; max-height: 150px; overflow-y: auto; }
+    .channel-item { padding: 8px; margin: 5px 0; background: #e9ecef; border-radius: 5px; cursor: pointer; font-size: 14px; }
+    .channel-item:hover { background: #dee2e6; }
+    .channel-item.active { background: #007bff; color: white; }
+    .messages { flex: 1; padding: 15px; overflow-y: auto; background: #fafafa; }
+    .message { margin: 10px 0; padding: 12px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .message.mine { background: #e3f2fd; margin-left: 50px; }
+    .message.other { background: #f1f3f4; margin-right: 50px; }
+    .message .sender { font-weight: bold; color: #333; margin-bottom: 5px; font-size: 13px; }
+    .message .text { color: #555; line-height: 1.5; }
+    .message .time { font-size: 11px; color: #999; margin-top: 5px; }
+    .typing-indicator { 
+      padding: 10px; 
+      font-style: italic; 
+      color: #666; 
+      font-size: 12px; 
+      min-height: 30px; 
+      background: #f8f9fa; 
+      border-left: 3px solid #007bff; 
+      margin: 5px 0; 
+      border-radius: 3px;
+      animation: pulse 1.5s ease-in-out infinite;
+      display: none; /* 기본적으로 숨김 */
+    }
+    .typing-indicator.show {
+      display: block; /* 타이핑 중일 때만 표시 */
+    }
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+    .input-area { padding: 15px; background: white; border-top: 2px solid #eee; }
+    .input-area input { width: calc(100% - 100px); padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+    .input-area button { width: 90px; padding: 12px; margin-left: 10px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    .input-area button:hover { background: #218838; }
+    .log { font-size: 11px; color: #6c757d; padding: 3px 5px; background: #fff3cd; margin: 2px 0; border-left: 3px solid #ffc107; }
+    h2 { margin: 0; font-size: 18px; }
+    h3 { font-size: 14px; margin: 10px 0 5px 0; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="panel teacher" id="teacher-panel">
+      <div class="header">
+        <h2>👨‍🏫 교사 (김교사)</h2>
+        <p style="font-size: 12px; opacity: 0.9; margin-top: 5px;">teacher@test.com</p>
+      </div>
+      <div class="status" id="teacher-status">연결 안됨</div>
+      <div class="controls">
+        <button onclick="teacherLogin()">로그인</button>
+        <button onclick="teacherConnect()" id="teacher-connect-btn" disabled>WebSocket 연결</button>
+        <button onclick="teacherCreateChannel()">채널 생성</button>
+        <button onclick="teacherLoadChannels()">채널 새로고침</button>
+      </div>
+      <div class="channels" id="teacher-channels">
+        <h3>내 채널</h3>
+      </div>
+      <div class="messages" id="teacher-messages"></div>
+      <div class="typing-indicator" id="teacher-typing"></div>
+      <div class="input-area">
+        <input type="text" id="teacher-input" placeholder="메시지 입력..." onkeypress="handleTeacherKeypress(event)">
+        <button onclick="teacherSendMessage()">전송</button>
+      </div>
+    </div>
+
+    <div class="panel student" id="student-panel">
+      <div class="header">
+        <h2>👨‍🎓 학생 (이학생)</h2>
+        <p style="font-size: 12px; opacity: 0.9; margin-top: 5px;">student1@test.com</p>
+      </div>
+      <div class="status" id="student-status">연결 안됨</div>
+      <div class="controls">
+        <button onclick="studentLogin()">로그인</button>
+        <button onclick="studentConnect()" id="student-connect-btn" disabled>WebSocket 연결</button>
+        <button onclick="studentLoadChannels()">채널 새로고침</button>
+      </div>
+      <div class="channels" id="student-channels">
+        <h3>내 채널</h3>
+      </div>
+      <div class="messages" id="student-messages"></div>
+      <div class="typing-indicator" id="student-typing"></div>
+      <div class="input-area">
+        <input type="text" id="student-input" placeholder="메시지 입력..." onkeypress="handleStudentKeypress(event)">
+        <button onclick="studentSendMessage()">전송</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:2086';
+    let teacherToken = null;
+    let studentToken = null;
+    let teacherSocket = null;
+    let studentSocket = null;
+    let sharedChannelId = null; // 공유 채널 ID
+    let teacherTypingTimeout = null;
+    let studentTypingTimeout = null;
+    let teacherIsTyping = false;
+    let studentIsTyping = false;
+
+    async function teacherLogin() {
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'teacher@test.com' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        teacherToken = data.data.accessToken;
+        addTeacherLog('✅ 로그인 성공');
+        document.getElementById('teacher-connect-btn').disabled = false;
+        teacherLoadChannels();
+      }
+    }
+
+    async function studentLogin() {
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'student1@test.com' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        studentToken = data.data.accessToken;
+        addStudentLog('✅ 로그인 성공');
+        document.getElementById('student-connect-btn').disabled = false;
+        studentLoadChannels();
+      }
+    }
+
+    function teacherConnect() {
+      teacherSocket = io(API_URL, { auth: { token: teacherToken } });
+      
+      teacherSocket.on('connect', () => {
+        document.getElementById('teacher-status').textContent = '🟢 WebSocket 연결됨';
+        document.getElementById('teacher-status').className = 'status connected';
+        addTeacherLog('🔌 WebSocket 연결 성공');
+      });
+
+      teacherSocket.on('disconnect', () => {
+        document.getElementById('teacher-status').textContent = '🔴 연결 끊김';
+        document.getElementById('teacher-status').className = 'status disconnected';
+      });
+
+      teacherSocket.on('message.created', (data) => {
+        const msg = data.message;
+        addTeacherMessage(msg.senderId, msg.senderName, msg.senderRole, msg.text, msg.createdAt, false);
+      });
+
+      teacherSocket.on('typing', (data) => {
+        console.log('Teacher received typing event:', data);
+        const typingElement = document.getElementById('teacher-typing');
+        if (data.isTyping) {
+          typingElement.innerHTML = `💬 ${data.userRole === 'student' ? '학생' : '교사'}이(가) 입력 중...`;
+          typingElement.classList.add('show');
+        } else {
+          typingElement.classList.remove('show');
+          typingElement.innerHTML = '';
+        }
+      });
+
+      teacherSocket.on('channel.read.synced', (data) => {
+        addTeacherLog(`👁️ ${data.userId.substring(0,8)}가 읽음`);
+      });
+    }
+
+    function studentConnect() {
+      studentSocket = io(API_URL, { auth: { token: studentToken } });
+      
+      studentSocket.on('connect', () => {
+        document.getElementById('student-status').textContent = '🟢 WebSocket 연결됨';
+        document.getElementById('student-status').className = 'status connected';
+        addStudentLog('🔌 WebSocket 연결 성공');
+      });
+
+      studentSocket.on('disconnect', () => {
+        document.getElementById('student-status').textContent = '🔴 연결 끊김';
+        document.getElementById('student-status').className = 'status disconnected';
+      });
+
+      studentSocket.on('message.created', (data) => {
+        const msg = data.message;
+        addStudentMessage(msg.senderId, msg.senderName, msg.senderRole, msg.text, msg.createdAt, false);
+      });
+
+      studentSocket.on('typing', (data) => {
+        console.log('Student received typing event:', data);
+        const typingElement = document.getElementById('student-typing');
+        if (data.isTyping) {
+          typingElement.innerHTML = `💬 ${data.userRole === 'teacher' ? '교사' : '학생'}이(가) 입력 중...`;
+          typingElement.classList.add('show');
+        } else {
+          typingElement.classList.remove('show');
+          typingElement.innerHTML = '';
+        }
+      });
+
+      studentSocket.on('channel.read.synced', (data) => {
+        addStudentLog(`👁️ ${data.userId.substring(0,8)}가 읽음`);
+      });
+    }
+
+    async function teacherLoadChannels() {
+      const res = await fetch(`${API_URL}/channels`, {
+        headers: { 'Authorization': `Bearer ${teacherToken}` }
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        const html = '<h3>공유 채널</h3>' + data.data.map(ch => 
+          `<div class="channel-item" onclick="selectSharedChannel('${ch.id}')">${ch.name} (${ch.type})</div>`
+        ).join('');
+        document.getElementById('teacher-channels').innerHTML = html;
+      }
+    }
+
+    async function studentLoadChannels() {
+      const res = await fetch(`${API_URL}/channels`, {
+        headers: { 'Authorization': `Bearer ${studentToken}` }
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        const html = '<h3>공유 채널</h3>' + data.data.map(ch => 
+          `<div class="channel-item" onclick="selectSharedChannel('${ch.id}')">${ch.name} (${ch.type})</div>`
+        ).join('');
+        document.getElementById('student-channels').innerHTML = html;
+      }
+    }
+
+    async function selectSharedChannel(channelId) {
+      sharedChannelId = channelId;
+      addTeacherLog(`📂 공유 채널 선택: ${channelId.substring(0,8)}`);
+      addStudentLog(`📂 공유 채널 선택: ${channelId.substring(0,8)}`);
+      
+      // 양쪽 소켓 모두 같은 채널에 조인
+      if (teacherSocket) {
+        teacherSocket.emit('channel.join', { channelId });
+      }
+      if (studentSocket) {
+        studentSocket.emit('channel.join', { channelId });
+      }
+
+      // 양쪽 화면에 메시지 로드
+      await loadSharedMessages(channelId);
+    }
+
+    async function loadSharedMessages(channelId) {
+      // 교사 화면에 메시지 로드
+      const teacherRes = await fetch(`${API_URL}/channels/${channelId}/messages`, {
+        headers: { 'Authorization': `Bearer ${teacherToken}` }
+      });
+      const teacherData = await teacherRes.json();
+      
+      document.getElementById('teacher-messages').innerHTML = '';
+      if (teacherData.success && teacherData.data) {
+        teacherData.data.reverse().forEach(msg => {
+          addTeacherMessage(msg.senderId, msg.senderName, msg.senderRole, msg.text, msg.createdAt, true);
+        });
+      }
+
+      // 학생 화면에 메시지 로드
+      const studentRes = await fetch(`${API_URL}/channels/${channelId}/messages`, {
+        headers: { 'Authorization': `Bearer ${studentToken}` }
+      });
+      const studentData = await studentRes.json();
+      
+      document.getElementById('student-messages').innerHTML = '';
+      if (studentData.success && studentData.data) {
+        studentData.data.reverse().forEach(msg => {
+          addStudentMessage(msg.senderId, msg.senderName, msg.senderRole, msg.text, msg.createdAt, true);
+        });
+      }
+    }
+
+    async function teacherCreateChannel() {
+      const name = prompt('채널 이름:', '새 채널');
+      if (!name) return;
+
+      const res = await fetch(`${API_URL}/channels`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${teacherToken}` 
+        },
+        body: JSON.stringify({
+          type: 'general',
+          name: name,
+          classId: 'class-1'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addTeacherLog(`✅ 채널 생성: ${name}`);
+        teacherLoadChannels();
+        studentLoadChannels();
+        // 새로 생성된 채널을 공유 채널로 자동 선택
+        if (data.data && data.data.id) {
+          selectSharedChannel(data.data.id);
+        }
+      }
+    }
+
+    function teacherSendMessage() {
+      const input = document.getElementById('teacher-input');
+      const text = input.value.trim();
+      if (!text || !sharedChannelId) return;
+
+      if (teacherSocket && teacherSocket.connected) {
+        teacherSocket.emit('message.send', {
+          channelId: sharedChannelId,
+          text: text,
+          mentions: []
+        }, (response) => {
+          if (response.success) {
+            input.value = '';
+            // 타이핑 상태 즉시 중지
+            if (teacherIsTyping) {
+              teacherSocket.emit('typing.stop', { channelId: sharedChannelId });
+              teacherIsTyping = false;
+            }
+            if (teacherTypingTimeout) {
+              clearTimeout(teacherTypingTimeout);
+            }
+          }
+        });
+      } else {
+        fetch(`${API_URL}/channels/${sharedChannelId}/messages`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${teacherToken}` 
+          },
+          body: JSON.stringify({ text })
+        }).then(() => {
+          input.value = '';
+          loadSharedMessages(sharedChannelId);
+        });
+      }
+    }
+
+    function studentSendMessage() {
+      const input = document.getElementById('student-input');
+      const text = input.value.trim();
+      if (!text || !sharedChannelId) return;
+
+      if (studentSocket && studentSocket.connected) {
+        studentSocket.emit('message.send', {
+          channelId: sharedChannelId,
+          text: text,
+          mentions: []
+        }, (response) => {
+          if (response.success) {
+            input.value = '';
+            // 타이핑 상태 즉시 중지
+            if (studentIsTyping) {
+              studentSocket.emit('typing.stop', { channelId: sharedChannelId });
+              studentIsTyping = false;
+            }
+            if (studentTypingTimeout) {
+              clearTimeout(studentTypingTimeout);
+            }
+          }
+        });
+      } else {
+        fetch(`${API_URL}/channels/${sharedChannelId}/messages`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${studentToken}` 
+          },
+          body: JSON.stringify({ text })
+        }).then(() => {
+          input.value = '';
+          loadSharedMessages(sharedChannelId);
+        });
+      }
+    }
+
+    function handleTeacherKeypress(e) {
+      if (e.key === 'Enter') {
+        teacherSendMessage();
+        return;
+      }
+      
+      if (teacherSocket && sharedChannelId) {
+        // 타이핑 시작 (중복 방지)
+        if (!teacherIsTyping) {
+          console.log('Teacher starting typing...');
+          teacherSocket.emit('typing.start', { channelId: sharedChannelId });
+          teacherIsTyping = true;
+        }
+        
+        // 기존 타이머 클리어
+        if (teacherTypingTimeout) {
+          clearTimeout(teacherTypingTimeout);
+        }
+        
+        // 2초 후 타이핑 중지
+        teacherTypingTimeout = setTimeout(() => {
+          if (teacherIsTyping) {
+            teacherSocket.emit('typing.stop', { channelId: sharedChannelId });
+            teacherIsTyping = false;
+          }
+        }, 2000);
+      }
+    }
+
+    function handleStudentKeypress(e) {
+      if (e.key === 'Enter') {
+        studentSendMessage();
+        return;
+      }
+      
+      if (studentSocket && sharedChannelId) {
+        // 타이핑 시작 (중복 방지)
+        if (!studentIsTyping) {
+          console.log('Student starting typing...');
+          studentSocket.emit('typing.start', { channelId: sharedChannelId });
+          studentIsTyping = true;
+        }
+        
+        // 기존 타이머 클리어
+        if (studentTypingTimeout) {
+          clearTimeout(studentTypingTimeout);
+        }
+        
+        // 2초 후 타이핑 중지
+        studentTypingTimeout = setTimeout(() => {
+          if (studentIsTyping) {
+            studentSocket.emit('typing.stop', { channelId: sharedChannelId });
+            studentIsTyping = false;
+          }
+        }, 2000);
+      }
+    }
+
+    function teacherStopTyping() {
+      if (teacherSocket && sharedChannelId) {
+        teacherSocket.emit('typing.stop', { channelId: sharedChannelId });
+      }
+    }
+
+    function studentStopTyping() {
+      if (studentSocket && sharedChannelId) {
+        studentSocket.emit('typing.stop', { channelId: sharedChannelId });
+      }
+    }
+
+    function addTeacherMessage(senderId, senderName, senderRole, text, time, isHistory) {
+      const div = document.createElement('div');
+      const isMine = senderRole === 'teacher';
+      div.className = `message ${isMine ? 'mine' : 'other'}`;
+      div.innerHTML = `
+        <div class="sender">${isMine ? '나 (교사)' : '학생'}</div>
+        <div class="text">${text}</div>
+        <div class="time">${new Date(time).toLocaleTimeString('ko-KR')}</div>
+      `;
+      document.getElementById('teacher-messages').appendChild(div);
+      if (!isHistory) {
+        div.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function addStudentMessage(senderId, senderName, senderRole, text, time, isHistory) {
+      const div = document.createElement('div');
+      const isMine = senderRole === 'student';
+      div.className = `message ${isMine ? 'mine' : 'other'}`;
+      div.innerHTML = `
+        <div class="sender">${isMine ? '나 (학생)' : '교사'}</div>
+        <div class="text">${text}</div>
+        <div class="time">${new Date(time).toLocaleTimeString('ko-KR')}</div>
+      `;
+      document.getElementById('student-messages').appendChild(div);
+      if (!isHistory) {
+        div.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function addTeacherLog(text) {
+      const div = document.createElement('div');
+      div.className = 'log';
+      div.textContent = text;
+      document.getElementById('teacher-messages').appendChild(div);
+    }
+
+    function addStudentLog(text) {
+      const div = document.createElement('div');
+      div.className = 'log';
+      div.textContent = text;
+      document.getElementById('student-messages').appendChild(div);
+    }
+
+    window.onload = () => {
+      addTeacherLog('👋 교사 패널 준비 완료');
+      addStudentLog('👋 학생 패널 준비 완료');
+      addTeacherLog('💡 먼저 "로그인" 버튼을 클릭하세요');
+      addStudentLog('💡 먼저 "로그인" 버튼을 클릭하세요');
+    };
+  </script>
+</body>
+</html>
+

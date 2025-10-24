@@ -7,6 +7,7 @@ import { ChannelMember } from './entities/channel-member.entity';
 import { ChannelJoinRequest } from './entities/channel-join-request.entity';
 import { ChannelPin } from './entities/channel-pin.entity';
 import { Message } from '../messages/entities/message.entity';
+import { User } from '../users/entities/user.entity';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { Message } from '../messages/entities/message.entity';
       ChannelJoinRequest,
       ChannelPin,
       Message,
+      User,
     ]),
   ],
   controllers: [ChannelsController],

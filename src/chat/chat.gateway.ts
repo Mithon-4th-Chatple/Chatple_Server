@@ -8,12 +8,13 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { JwtService } from '@nestjs/jwt';
 import { Message } from '../messages/entities/message.entity';
 import { MessageMention } from '../messages/entities/message-mention.entity';
 import { ChannelMember } from '../channels/entities/channel-member.entity';
+import { User } from '../users/entities/user.entity';
 
 @WebSocketGateway({
   cors: {
@@ -27,31 +28,49 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private typingUsers: Map<string, Set<string>> = new Map();
 
   constructor(
-    private jwtService: JwtService,
     @InjectRepository(Message)
-    private messageRepository: Repository<Message>,
+    private readonly messageRepository: Repository<Message>,
     @InjectRepository(MessageMention)
-    private mentionRepository: Repository<MessageMention>,
+    private readonly mentionRepository: Repository<MessageMention>,
     @InjectRepository(ChannelMember)
-    private channelMemberRepository: Repository<ChannelMember>,
+    private readonly channelMemberRepository: Repository<ChannelMember>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    private readonly jwtService: JwtService,
   ) {}
 
   async handleConnection(client: Socket) {
+    console.log(`Client connected: ${client.id}`);
+    
     try {
-      const token = client.handshake.auth.token || client.handshake.headers.authorization?.split(' ')[1];
-      
+      // 토큰 검증
+      const token = client.handshake.auth?.token;
       if (!token) {
+        console.log('No token provided');
         client.disconnect();
         return;
       }
 
+      // JWT 토큰 검증
       const payload = this.jwtService.verify(token);
-      client.data.userId = payload.sub;
-      client.data.user = payload;
+      const user = await this.userRepository.findOne({
+        where: { id: payload.sub }
+      });
+
+      if (!user) {
+        console.log('User not found');
+        client.disconnect();
+        return;
+      }
+
+      // 사용자 정보 저장
+      client.data.userId = user.id;
+      client.data.userRole = user.role;
+      client.data.userName = user.name;
       
-      console.log(`Client connected: ${client.id}, userId: ${payload.sub}`);
+      console.log(`User authenticated: ${user.name} (${user.role})`);
     } catch (error) {
-      console.error('WebSocket auth error:', error);
+      console.log('Authentication failed:', error.message);
       client.disconnect();
     }
   }
@@ -104,30 +123,23 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      const message = this.messageRepository.create({
+      // 클라이언트에서 이미 저장된 사용자 정보 사용
+      const message = {
+        id: 'temp-' + Date.now(),
         channelId: data.channelId,
         senderId: client.data.userId,
+        senderName: client.data.userName,
+        senderRole: client.data.userRole,
         text: data.text,
-        attachments: data.attachments,
+        createdAt: new Date(),
+      };
+
+      // 채널의 모든 사용자에게 메시지 전송 (전송자 포함)
+      this.server.in(data.channelId).emit('message.created', {
+        message,
       });
 
-      const savedMessage = await this.messageRepository.save(message);
-
-      if (data.mentions && data.mentions.length > 0) {
-        const mentions = data.mentions.map((userId) =>
-          this.mentionRepository.create({
-            messageId: savedMessage.id,
-            targetUserId: userId,
-          }),
-        );
-        await this.mentionRepository.save(mentions);
-      }
-
-      this.server.to(data.channelId).emit('message.created', {
-        message: savedMessage,
-      });
-
-      return { success: true, message: savedMessage };
+      return { success: true, message };
     } catch (error) {
       console.error('Error sending message:', error);
       return { success: false, error: error.message };
@@ -140,17 +152,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      await this.channelMemberRepository.update(
-        {
-          channelId: data.channelId,
-          userId: client.data.userId,
-        },
-        {
-          lastReadAt: new Date(),
-        },
-      );
-
-      this.server.to(data.channelId).emit('channel.read.synced', {
+      this.server.in(data.channelId).emit('channel.read.synced', {
         channelId: data.channelId,
         userId: client.data.userId,
         lastReadAt: new Date(),
@@ -180,6 +182,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.to(data.channelId).emit('typing', {
       channelId: data.channelId,
       userId: client.data.userId,
+      userName: client.data.userName,
+      userRole: client.data.userRole,
       isTyping: true,
     });
 
@@ -199,6 +203,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.to(data.channelId).emit('typing', {
       channelId: data.channelId,
       userId: client.data.userId,
+      userName: client.data.userName,
+      userRole: client.data.userRole,
       isTyping: false,
     });
 

@@ -37,7 +37,7 @@ export class ConfigService {
     return this.config.get<string>('JWT_SECRET', 'your_jwt_secret_here');
   }
 
-  get jwtExpiresIn(): string | number {
+  get jwtExpiresIn(): string {
     return this.config.get<string>('JWT_EXPIRES_IN', '7d');
   }
 
