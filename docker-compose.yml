@@ -19,7 +19,7 @@ services:
     build: .
     container_name: chatple-server-app
     ports:
-      - "2086:3000"
+      - "2086:2086"
     networks:
       - chatple-network
     env_file:
@@ -29,7 +29,7 @@ services:
     environment:
       - DATABASE_HOST=postgres
       - DATABASE_PORT=5432
-      - PORT=3000
+      - PORT=2086
       - NODE_ENV=development
 
 networks:
